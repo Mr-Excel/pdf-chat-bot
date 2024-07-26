@@ -1,5 +1,6 @@
 import os
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException
+from dotenv import load_dotenv
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from pydantic import BaseModel
 from docx import Document
 from langchain.chains import ConversationalRetrievalChain
@@ -11,20 +12,24 @@ from langchain.vectorstores import FAISS
 from PyPDF2 import PdfReader
 from typing import List
 
+# Load environment variables from .env file
+load_dotenv()
+
+# Set the OpenAI API key from environment variables
 os.environ["OPENAI_API_KEY"] = os.getenv('OPENAI_API_KEY')
 
+# Initialize the FastAPI app
 app = FastAPI()
 
-
+# Define the request and response models for question handling
 class QuestionRequest(BaseModel):
     question: str
-
 
 class QuestionResponse(BaseModel):
     user_message: str
     assistant_message: str
 
-
+# Function to parse content from a DOCX file
 def parse_docx(data):
     document = Document(docx=data)
     content = ""
@@ -32,7 +37,7 @@ def parse_docx(data):
         content += para.text
     return content
 
-
+# Function to extract text from uploaded documents (PDF or DOCX)
 def get_text(docs):
     doc_text = ""
     for doc in docs:
@@ -45,7 +50,7 @@ def get_text(docs):
             doc_text += parse_docx(data=doc.file.read())
     return doc_text
 
-
+# Function to split the extracted text into manageable chunks
 def get_chunks(data):
     text_splitter = CharacterTextSplitter(
         separator="\n", chunk_size=1000, chunk_overlap=250, length_function=len
@@ -53,11 +58,11 @@ def get_chunks(data):
     text_chunks = text_splitter.split_text(data)
     return text_chunks
 
-
+# Function to create vector representations of text chunks
 def get_vector(chunks):
     return FAISS.from_texts(texts=chunks, embedding=OpenAIEmbeddings())
 
-
+# Function to set up the ConversationalRetrievalChain with the LLM and vector store
 def get_llm_chain(vectors):
     llm_chain = ConversationalRetrievalChain.from_llm(
         llm=ChatOpenAI(model_name="gpt-3.5-turbo", temperature=0.7),
@@ -68,7 +73,7 @@ def get_llm_chain(vectors):
     )
     return llm_chain
 
-
+# Endpoint to upload files and process them into vectors for LLM
 @app.post("/upload_files/")
 async def upload_files(files: List[UploadFile] = File(...)):
     doc_text = get_text(files)
@@ -78,7 +83,7 @@ async def upload_files(files: List[UploadFile] = File(...)):
     app.state.llm_chain = llm_chain
     return {"message": "Files processed successfully. You can now ask questions."}
 
-
+# Endpoint to handle question asking, using the processed files
 @app.post("/ask_question/", response_model=QuestionResponse)
 async def ask_question(question_request: QuestionRequest):
     if not hasattr(app.state, "llm_chain"):
@@ -94,8 +99,7 @@ async def ask_question(question_request: QuestionRequest):
 
     return QuestionResponse(user_message=user_message, assistant_message=assistant_message)
 
-
+# Main function to run the FastAPI app using Uvicorn
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run(app, host="0.0.0.0", port=8000)

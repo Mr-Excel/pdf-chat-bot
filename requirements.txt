@@ -9,9 +9,4 @@ tiktoken==0.7.0
 fastapi==0.95.2
 uvicorn==0.22.0
 python-multipart==0.0.9
-databases
 python-dotenv
-boto3
-asyncpg
-psycopg2
-sqlalchemy
